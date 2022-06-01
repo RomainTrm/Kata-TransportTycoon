@@ -30,39 +30,42 @@ let paths = dict[
     B, [{ Start = Factory; End = Destination_B; EAT = 5 }]
 ]
 
+let sendPackage transportId homeBase destination currentPlace packagesTail  =
+    let pathStep = paths.[destination] |> List.find (fun step -> step.Start = currentPlace)
+    let movingTransport = MovingToPlace { TransportId = transportId; HomeBase = homeBase; Destination = pathStep.End; EAT = pathStep.EAT; HomeBaseEAT = 0 }
+    let movingPackage = { Destination = destination; Position = InTransport transportId }
+    movingTransport, movingPackage::packagesTail
+    
+let unloadPackage transportId homeBase destination homeBaseEAT packages =
+    let movingTransport = ReturningAtHomeBase { TransportId = transportId; HomeBase = homeBase; EAT = homeBaseEAT + 1 }
+    let unloadPackage (package: Package) =
+        { package with Position = match package.Position with
+                                   | InTransport id when id = transportId -> Place destination
+                                   | _ -> package.Position
+        }
+    let packages = packages |> List.map unloadPackage
+    movingTransport, packages
+
 let rec moveTransport transport packages =
     match transport, packages with
     | _, [] -> transport, []
     
     | AtHomeBase atHomeBase, {Destination = destination; Position = Place place}::tail when place = atHomeBase.Place ->
-        let pathStep = paths.[destination] |> List.find (fun step -> step.Start = place)
-        let movingTransport = MovingToPlace { TransportId = atHomeBase.TransportId; HomeBase = atHomeBase.Place; Destination = pathStep.End; EAT = pathStep.EAT; HomeBaseEAT = 0 }
-        let movingPackage = { Destination = destination; Position = InTransport atHomeBase.TransportId }
-        movingTransport, movingPackage::tail
+        sendPackage atHomeBase.TransportId atHomeBase.Place destination place tail
         
     | AtHomeBase _, head::tail ->
         let transport, tail = moveTransport transport tail
         transport, head::tail
     
     | MovingToPlace moving, _ when moving.EAT = 1 ->
-        let movingTransport = ReturningAtHomeBase { TransportId = moving.TransportId; HomeBase = moving.HomeBase; EAT = moving.HomeBaseEAT + 1 }
-        let unloadPackage (package: Package) =
-            { package with Position = match package.Position with
-                                       | InTransport id when id = moving.TransportId -> Place moving.Destination
-                                       | _ -> package.Position
-            }
-        let packages = packages |> List.map unloadPackage
-        movingTransport, packages
+        unloadPackage moving.TransportId moving.HomeBase moving.Destination moving.HomeBaseEAT packages
     
     | MovingToPlace moving, _ ->
         let movingTransport = MovingToPlace { moving with EAT = moving.EAT - 1; HomeBaseEAT = moving.HomeBaseEAT + 1 }
         movingTransport, packages
         
     | ReturningAtHomeBase moving, {Destination = destination; Position = Place place}::tail when place = moving.HomeBase && moving.EAT = 1 ->
-        let pathStep = paths.[destination] |> List.find (fun step -> step.Start = place)
-        let movingTransport = MovingToPlace { TransportId = moving.TransportId; HomeBase = moving.HomeBase; Destination = pathStep.End; EAT = pathStep.EAT; HomeBaseEAT = 0 }
-        let movingPackage = { Destination = destination; Position = InTransport moving.TransportId }
-        movingTransport, movingPackage::tail
+        sendPackage moving.TransportId moving.HomeBase destination place tail
         
     | ReturningAtHomeBase moving, head::tail when moving.EAT = 1 ->
         let transport, tail = moveTransport transport tail
