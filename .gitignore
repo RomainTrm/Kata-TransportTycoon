@@ -1,0 +1,9 @@
+bin/
+obj/
+/packages/
+.idea/
+
+.fake
+.ionide
+
+*.sln.DotSettings.user
